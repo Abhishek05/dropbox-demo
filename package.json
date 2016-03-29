@@ -4,7 +4,8 @@
   "description": "A recursive implementation of fs.readdir",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "client" : "node client.js"
   },
   "repository": {
     "type": "git",

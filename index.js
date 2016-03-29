@@ -11,17 +11,16 @@ let wrap = require('co-express')
 let bodyParser = require('simple-bodyparser')
 let path = require('path')
 let mime = require('mime-types')
-let nodify = require('bluebird-nodeify')
 let rim = require('rimraf')
 let mkp = require('mkdirp')
 let archiver = require('archiver')
 let argv = require('yargs').argv
-let dir = argv.dir
+//let dir = argv.dir
 let chokidar = require('chokidar')
 let net = require('net')
 let JsonSocket = require('json-socket');
 
-const ROOT_DIR = path.resolve(dir || process.cwd())
+const ROOT_DIR = path.resolve(argv.dir || process.cwd())
 
 let clients = []
 
@@ -46,13 +45,10 @@ function* main() {
 
     app.del('*', wrap(setProperties), wrap(sendHeaders), wrap(remove))
     let port = 8000
-     app.listen(port)
+    app.listen(port)
     console.log('LISTENING @ http://127.0.0.1:'+port)
-
-
-
-    var tcpport = 8001
-    var server = net.createServer()
+    let tcpport = 8001
+    let server = net.createServer()
     server.listen(tcpport)
     console.log('LISTENING @ http://127.0.0.1:'+tcpport+' as well')
     server.on('connection', (socket) => {
@@ -74,50 +70,34 @@ function* main() {
             .on('add', (path) => {
                 let message = {"action": "create", "path": path.replace(ROOT_DIR, ""),
                                                   "type": "file", "updated": (new Date).getTime()}
-                clients.forEach((client) => {
-                    console.log("Overall message "+JSON.stringify(message))
-                    client.sendMessage(message)
-                })
-
-
-             }).on('change', (path) => {
+                sendMessageToClient(clients, message)
+            }).on('change', (path) => {
                let message = {"action": "update", "path": path.replace(ROOT_DIR, ""),
                                                    "type": "file", "updated": (new Date).getTime()}
-               clients.forEach((client) => {
-                   console.log("Overall message "+JSON.stringify(message))
-                   client.sendMessage(message)
-               })
-
+                sendMessageToClient(clients, message)
             }).on('unlink', (path) => {
                let message = {"action": "delete", "path": path.replace(ROOT_DIR, ""),
                                                     "type": "file", "updated": (new Date).getTime()}
-               clients.forEach((client) => {
-                      console.log("Overall message "+JSON.stringify(message))
-                      client.sendMessage(message)
-               })
+              sendMessageToClient(clients, message)
             }).on('addDir', (path) => {
                let message = {"action": "create", "path": path.replace(ROOT_DIR, ""),
                                                    "type": "dir", "updated": (new Date).getTime()}
-               clients.forEach((client) => {
-                      console.log("Overall message "+JSON.stringify(message))
-                      client.sendMessage(message)
-               })
+              sendMessageToClient(clients, message)
             }).on('unlinkDir', (path) => {
                let message = {"action": "delete", "path": path.replace(ROOT_DIR, ""),
                                                       "type": "dir", "updated": (new Date).getTime()}
-               clients.forEach((client) => {
-                      console.log("Overall message "+JSON.stringify(message))
-                      client.sendMessage(message)
-               })
+               sendMessageToClient(clients, message)
             })
 }
 
+function sendMessageToClient(clients, message) {
+    clients.forEach((client) => {
+        client.sendMessage(message)
+    })
+}
+
 function* setProperties(req, res, next){
-    if(dir){
-      req.filepath = path.resolve(path.join(dir,  req.url))
-    }else{
-      req.filepath = path.resolve(path.join(process.cwd(),  req.url))
-    }
+    req.filepath = path.resolve(path.join(ROOT_DIR,  req.url))
   try  {
     req.stat = yield fs.promise.stat(req.filepath)
   }catch(e){
@@ -128,7 +108,7 @@ function* setProperties(req, res, next){
 }
 
 function* sendHeaders(req, res, next) {
-      console.log("head");
+      console.log("Setting header");
       if(req.stat){
           if(req.stat.isDirectory()){
             let files = yield fs.promise.readdir(req.filepath)
@@ -163,10 +143,8 @@ function* setFileMissingError(req, res, next){
 }
 
 function* read(req, res, next) {
-  console.log("read")
   if(req.stat){
           if(res.body){
-              console.log("log "+ (req.accept && req.accept === 'application/x-gtar'));
               if(req.accept && req.accept === 'application/x-gtar'){
                 let archive = archiver('zip')
                 archive.pipe(res);
@@ -180,7 +158,6 @@ function* read(req, res, next) {
                 res.json(res.body)
               }
           }else{
-            console.log("reading"+ req.filepath)
             let data = yield fs.promise.readFile(req.filepath)
             res.end(data)
             //let readstream = yield fs.promise.createReadStream(req.filepath)
@@ -215,11 +192,10 @@ function* update(req, res) {
 }
 
 function* remove(req, res, next) {
-    console.log("delete")
     if(req.stat){
       if(req.stat.isDirectory()){
         yield rim.promise(req.filepath)
-        res.end()
+        //res.end()
       }else{
         yield fs.promise.unlink(req.filepath)
         res.end()
@@ -229,7 +205,7 @@ function* remove(req, res, next) {
       res.send('file does not exists');
       res.end()
     }
-  //  next();
+   next();
 }
 
 module.exports = main
