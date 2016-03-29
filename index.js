@@ -23,6 +23,8 @@ let JsonSocket = require('json-socket');
 
 const ROOT_DIR = path.resolve(dir || process.cwd())
 
+let clients = []
+
 function* main() {
     console.log('Starting server...')
     let app = express()
@@ -42,12 +44,12 @@ function* main() {
 
     app.post('*', wrap(setProperties), wrap(sendHeaders), wrap(setDirectoryDetails), wrap(update))
 
-    app.del('*', wrap(setProperties), wrap(sendHeaders), wrap(remove), wrap(setFileMissingError))
+    app.del('*', wrap(setProperties), wrap(sendHeaders), wrap(remove))
     let port = 8000
      app.listen(port)
     console.log('LISTENING @ http://127.0.0.1:'+port)
 
-    let clients = []
+
 
     var tcpport = 8001
     var server = net.createServer()
@@ -68,27 +70,47 @@ function* main() {
         })
     })
 
-    chokidar.watch(ROOT_DIR, {ignored: /[\/\\]\./, ignoreInitial: true})
-            .on('add', (path) => { sendMessage({"action": "create", "path": path.replace(ROOT_DIR, ""),
-                                                "type": "file", "updated": (new Date).getTime()}) })
-            .on('change', (path) => { sendMessage({"action": "update", "path": path.replace(ROOT_DIR, ""),
-                                                   "type": "file", "updated": (new Date).getTime()}) })
-            .on('unlink', (path) => { sendMessage({"action": "delete", "path": path.replace(ROOT_DIR, ""),
-                                                   "type": "file", "updated": (new Date).getTime()}) })
-            .on('addDir', (path) => { sendMessage({"action": "create", "path": path.replace(ROOT_DIR, ""),
-                                                   "type": "dir", "updated": (new Date).getTime()}) })
-            .on('unlinkDir', (path) => { sendMessage({"action": "delete", "path": path.replace(ROOT_DIR, ""),
-                                                      "type": "dir", "updated": (new Date).getTime()}) })
+      chokidar.watch(ROOT_DIR, {ignored: /[\/\\]\./})
+            .on('add', (path) => {
+                let message = {"action": "create", "path": path.replace(ROOT_DIR, ""),
+                                                  "type": "file", "updated": (new Date).getTime()}
+                clients.forEach((client) => {
+                    console.log("Overall message "+JSON.stringify(message))
+                    client.sendMessage(message)
+                })
+
+
+             }).on('change', (path) => {
+               let message = {"action": "update", "path": path.replace(ROOT_DIR, ""),
+                                                   "type": "file", "updated": (new Date).getTime()}
+               clients.forEach((client) => {
+                   console.log("Overall message "+JSON.stringify(message))
+                   client.sendMessage(message)
+               })
+
+            }).on('unlink', (path) => {
+               let message = {"action": "delete", "path": path.replace(ROOT_DIR, ""),
+                                                    "type": "file", "updated": (new Date).getTime()}
+               clients.forEach((client) => {
+                      console.log("Overall message "+JSON.stringify(message))
+                      client.sendMessage(message)
+               })
+            }).on('addDir', (path) => {
+               let message = {"action": "create", "path": path.replace(ROOT_DIR, ""),
+                                                   "type": "dir", "updated": (new Date).getTime()}
+               clients.forEach((client) => {
+                      console.log("Overall message "+JSON.stringify(message))
+                      client.sendMessage(message)
+               })
+            }).on('unlinkDir', (path) => {
+               let message = {"action": "delete", "path": path.replace(ROOT_DIR, ""),
+                                                      "type": "dir", "updated": (new Date).getTime()}
+               clients.forEach((client) => {
+                      console.log("Overall message "+JSON.stringify(message))
+                      client.sendMessage(message)
+               })
+            })
 }
-
-function* sendMessage(message) {
-    clients.forEach((client) => {
-        client.sendMessage(message)
-    })
-}
-
-
-
 
 function* setProperties(req, res, next){
     if(dir){
@@ -133,7 +155,6 @@ function* setDirectoryDetails(req, res, next){
 }
 
 function* setFileMissingError(req, res, next){
-  console.log("error file")
   if(!req.stat){
       res.status(405);
       res.send('file does not exists');
@@ -147,18 +168,6 @@ function* read(req, res, next) {
           if(res.body){
               console.log("log "+ (req.accept && req.accept === 'application/x-gtar'));
               if(req.accept && req.accept === 'application/x-gtar'){
-                /*let archive = archiver('zip');
-                archive.pipe(res);
-                archive.bulk([
-                  { expand: true, cwd: req.filepath, src: ['**']}
-                ])
-                archive.finalize()
-
-                archive.on('close', function() {
-                  res.setHeader("Content-Length", archive.pointer())
-                });
-
-                res.setHeader("Content-Type", 'application/x-gtar')*/
                 let archive = archiver('zip')
                 archive.pipe(res);
                 archive.bulk([
@@ -166,9 +175,6 @@ function* read(req, res, next) {
                 ])
                 yield archive.promise.finalize()
                 res.end(data)
-                /*archive.on('close', function() {
-                    res.end(data)
-                });*/
 
               }else{
                 res.json(res.body)
@@ -213,11 +219,17 @@ function* remove(req, res, next) {
     if(req.stat){
       if(req.stat.isDirectory()){
         yield rim.promise(req.filepath)
+        res.end()
       }else{
         yield fs.promise.unlink(req.filepath)
+        res.end()
       }
+    }else{
+      res.status(405);
+      res.send('file does not exists');
+      res.end()
     }
-    next();
+  //  next();
 }
 
 module.exports = main

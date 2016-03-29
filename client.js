@@ -6,10 +6,13 @@ let path = require('path')
 let net = require('net')
 let JsonSocket = require('json-socket')
 let request = require('request')
-let tar = require('tar-stream')
+let tar = require('tar-fs')
 let argv = require('yargs').argv
 let mkdirp = require('mkdirp')
 let rimraf = require('rimraf')
+//let extract = tar.extract()
+
+
 
 const CLIENT_DIR = path.resolve(argv.dir || path.join(os.tmpdir(), "assignment2"))
 
@@ -25,7 +28,7 @@ socket.on('connect', () => {
         url: 'http://127.0.0.1:8000/',
         headers: { accept: 'application/x-gtar'}
     }
-    request.get(options).pipe(tar.Extract({path: CLIENT_DIR}))
+    request.get(options).pipe(tar.extract({path: CLIENT_DIR}))
     socket.on('message', (message) => {
             console.log('Message: '+ JSON.stringify(message))
             if(message.action === 'create'){
@@ -49,13 +52,14 @@ socket.on('connect', () => {
                   if (message.type == 'dir') {
                       console.log('Deleting Dir: '+ path.join(CLIENT_DIR, message.path))
                       rimraf(path.join(CLIENT_DIR, message.path), (err) => {
-                          console.log('Cannot delete folder: ' + err)
+                          //console.log('Cannot delete folder: ' + err)
                       })
                   }
                   else if (message.type == 'file') {
                       console.log('Deleting File: '+ path.join(CLIENT_DIR, message.path))
+                      //yield fs.promise.unlink(path.join(CLIENT_DIR, message.path))
                       fs.unlink(path.join(CLIENT_DIR, message.path), (err) => {
-                          console.log('Cannot delete file: ' + err)
+                          //console.log('Cannot delete file: ' + err)
                       })
                   }
             }
